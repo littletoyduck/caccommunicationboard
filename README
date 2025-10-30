@@ -1,0 +1,31 @@
+📌 Overview
+This app is designed to support individuals with speech or language impairments by providing a digital communication board. Users can express needs, emotions, and ideas through a simple, intuitive interface using visual symbols and categories. The app aims to promote inclusivity and accessibility in everyday communication.
+
+🎯 Purpose
+- Enable nonverbal users to communicate effectively with caregivers, educators, and peers.
+- Provide a customizable and user-friendly interface for diverse communication needs.
+
+🧩 Features
+- Core Vocabulary Grid: Includes essential words and phrases for daily interaction.
+- Category Navigation: Organized sections like emotions, actions, questions, and needs.
+- Symbol-Based Interface: Uses high-contrast icons for clarity and ease of use.
+- Custom Words: Users are able to add custom words and phrases.
+
+🧑‍🤝‍🧑 How to Use
+- Tap icons to build sentences or express needs.
+- Tap the settings icon to edit the speed and pitch of the voice.
+- Caregivers can assist by guiding users through scanning or pointing.
+
+🧪 Testing & Feedback
+- Tested with my mother and other workers of the Boys and Girls Club, got positive feedback!
+
+🧠 Technologies Used
+- React Native 
+- Firebase for data storage
+- Custom icon set for visual communication
+
+📄 License
+This project is under the MIT License.
+
+🙌 Acknowledgments
+Special thanks to my Mom and Ms. V, one of the staff at the BGC chapter at my school who supported the development of this app.
