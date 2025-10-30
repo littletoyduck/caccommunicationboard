@@ -1,0 +1,789 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Speech from 'expo-speech';
+import { useEffect, useState } from 'react';
+import { Button, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+
+export default function App() {
+  const [customWord, setCustomWord] = useState('');
+  const [emergencyPressed, setEmergencyPressed] = useState(false);
+  const [sentenceBuilder, setSentenceBuilder] = useState([]);
+  const [customButtons, setCustomButtons] = useState([]);
+  const [buttonStats, setButtonStats] = useState({});
+  const [collapsedCategories, setCollapsedCategories] = useState([]);
+  const [voiceSpeed, setVoiceSpeed] = useState(0.9);
+  const [voicePitch, setVoicePitch] = useState(1.0);
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    loadCustomWords();
+    loadButtonStats();
+  }, []);
+
+  const loadCustomWords = async () => {
+    try {
+      const saved = await AsyncStorage.getItem('customWords');
+      if (saved) {
+        setCustomButtons(JSON.parse(saved));
+      }
+    } catch (error) {
+      console.log('Error loading words:', error);
+    }
+  };
+
+  const saveCustomWords = async (words) => {
+    try {
+      await AsyncStorage.setItem('customWords', JSON.stringify(words));
+    } catch (error) {
+      console.log('Error saving words:', error);
+    }
+  };
+
+  const trackButtonPress = async (buttonLabel) => {
+    const newStats = {
+      ...buttonStats,
+      [buttonLabel]: (buttonStats[buttonLabel] || 0) + 1
+    };
+    setButtonStats(newStats);
+    await AsyncStorage.setItem('buttonStats', JSON.stringify(newStats));
+  };
+
+  const loadButtonStats = async () => {
+    try {
+      const saved = await AsyncStorage.getItem('buttonStats');
+      if (saved) {
+        setButtonStats(JSON.parse(saved));
+      }
+    } catch (error) {
+      console.log('Error loading stats:', error);
+    }
+  };
+
+  const speak = (text, label, shortWord) => {
+    if (sentenceBuilder.length > 0) {
+      addToSentence(shortWord || label || text);
+    } else {
+      Speech.speak(text, {
+        language: 'en-US',
+        pitch: voicePitch,
+        rate: voiceSpeed,
+      });
+      if (label) {
+        trackButtonPress(label);
+      }
+    }
+  };
+
+  const speakEmergency = () => {
+    setEmergencyPressed(true);
+    Speech.speak('I NEED HELP NOW! EMERGENCY!', {
+      language: 'en-US',
+      pitch: 1.2,
+      rate: 1.0,
+      volume: 1.0,
+    });
+    setTimeout(() => setEmergencyPressed(false), 2000);
+  };
+
+  const addToSentence = (word) => {
+    setSentenceBuilder([...sentenceBuilder, word]);
+  };
+
+  const speakSentence = () => {
+    if (sentenceBuilder.length > 0) {
+      const sentence = sentenceBuilder.join(' ');
+      Speech.speak(sentence, {
+        language: 'en-US',
+        pitch: voicePitch,
+        rate: voiceSpeed,
+      });
+      trackButtonPress('Custom Sentence');
+    }
+  };
+
+  const clearSentence = () => {
+    setSentenceBuilder([]);
+  };
+
+  const removeLastWord = () => {
+    setSentenceBuilder(sentenceBuilder.slice(0, -1));
+  };
+
+  const addCustomWord = () => {
+    if (customWord.trim()) {
+      const newButtons = [...customButtons, customWord.trim()];
+      setCustomButtons(newButtons);
+      saveCustomWords(newButtons);
+      setCustomWord('');
+    }
+  };
+
+  const deleteCustomWord = async (index) => {
+    const newButtons = customButtons.filter((_, i) => i !== index);
+    setCustomButtons(newButtons);
+    await saveCustomWords(newButtons);
+  };
+
+  const toggleCategory = (category) => {
+    if (collapsedCategories.includes(category)) {
+      setCollapsedCategories(collapsedCategories.filter(c => c !== category));
+    } else {
+      setCollapsedCategories([...collapsedCategories, category]);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+  <Text style={styles.title}>Communication Board</Text>
+  <TouchableOpacity 
+    style={styles.settingsButton}
+    onPress={() => setShowSettings(!showSettings)}
+  >
+    <Text style={styles.settingsIcon}>⚙️</Text>
+  </TouchableOpacity>
+</View>
+      
+      <TouchableOpacity 
+        style={[styles.emergencyButton, emergencyPressed && styles.emergencyButtonPressed]}
+        onPress={speakEmergency}
+      >
+        <Text style={styles.emergencyText}>🚨 EMERGENCY 🚨</Text>
+        <Text style={styles.emergencySubtext}>I NEED HELP NOW</Text>
+      </TouchableOpacity>
+
+      {sentenceBuilder.length > 0 && (
+        <View style={styles.sentenceBuilderContainer}>
+          <Text style={styles.sentenceBuilderTitle}>Building Sentence:</Text>
+          <View style={styles.sentenceDisplay}>
+            {sentenceBuilder.map((word, index) => (
+              <View key={index} style={styles.sentenceWord}>
+                <Text style={styles.sentenceWordText}>{word}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={styles.sentenceControls}>
+            <TouchableOpacity 
+              style={styles.sentenceControlButton}
+              onPress={speakSentence}
+            >
+              <Text style={styles.sentenceControlText}>🔊 Speak</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.sentenceControlButton, styles.undoButton]}
+              onPress={removeLastWord}
+            >
+              <Text style={styles.sentenceControlText}>↩️ Undo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.sentenceControlButton, styles.clearButton]}
+              onPress={clearSentence}
+            >
+              <Text style={styles.sentenceControlText}>🗑️ Clear</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {Object.keys(buttonStats).length > 0 && (
+        <>
+          <Text style={styles.quickAccessTitle}>⭐ Quick Access</Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.quickAccessScroll}
+            contentContainerStyle={styles.quickAccessContainer}
+          >
+            {Object.entries(buttonStats)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 6)
+              .map(([word, count]) => (
+                <TouchableOpacity 
+                  key={word} 
+                  style={styles.quickAccessButton}
+                  onPress={() => speak(word, word, word)}
+                >
+                  <Text style={styles.quickAccessButtonText}>{word}</Text>
+                  <Text style={styles.quickAccessCount}>{count}×</Text>
+                </TouchableOpacity>
+              ))}
+          </ScrollView>
+        </>
+      )}
+
+     {/* Voice Controls - Settings */}
+{showSettings && (
+  <View style={styles.voiceControl}>
+    <Text style={styles.settingsTitle}>⚙️ Settings</Text>
+    
+    <View style={styles.voiceControlRow}>
+      <Text style={styles.voiceControlLabel}>Speed: {voiceSpeed.toFixed(1)}x</Text>
+      <View style={styles.voiceControlButtons}>
+        <TouchableOpacity 
+          style={styles.voiceControlBtn}
+          onPress={() => setVoiceSpeed(Math.max(0.5, voiceSpeed - 0.1))}
+        >
+          <Text style={styles.voiceControlBtnText}>-</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.voiceControlBtn}
+          onPress={() => setVoiceSpeed(Math.min(1.5, voiceSpeed + 0.1))}
+        >
+          <Text style={styles.voiceControlBtnText}>+</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+    
+    <View style={styles.voiceControlRow}>
+      <Text style={styles.voiceControlLabel}>Pitch: {voicePitch.toFixed(1)}</Text>
+      <View style={styles.voiceControlButtons}>
+        <TouchableOpacity 
+          style={styles.voiceControlBtn}
+          onPress={() => setVoicePitch(Math.max(0.5, voicePitch - 0.1))}
+        >
+          <Text style={styles.voiceControlBtnText}>-</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.voiceControlBtn}
+          onPress={() => setVoicePitch(Math.min(2.0, voicePitch + 0.1))}
+        >
+          <Text style={styles.voiceControlBtnText}>+</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+)}
+      
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Add custom word..."
+          placeholderTextColor="#888"
+          value={customWord}
+          onChangeText={setCustomWord}
+        />
+        <Button title="Add" onPress={addCustomWord} />
+      </View>
+      
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <View style={styles.grid}>
+          
+          {/* Basic Needs */}
+          <TouchableOpacity 
+            style={styles.categoryHeader}
+            onPress={() => toggleCategory('Basic Needs')}
+          >
+            <Text style={styles.category}>Basic Needs</Text>
+            <Text style={styles.categoryArrow}>
+              {collapsedCategories.includes('Basic Needs') ? '▶' : '▼'}
+            </Text>
+          </TouchableOpacity>
+
+          {!collapsedCategories.includes('Basic Needs') && (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I am hungry', 'Hungry', 'hungry')}>
+                <Text style={styles.buttonText}>🍽️{'\n'}Hungry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I am thirsty', 'Thirsty', 'thirsty')}>
+                <Text style={styles.buttonText}>💧{'\n'}Thirsty</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I need to use the bathroom', 'Bathroom', 'bathroom')}>
+                <Text style={styles.buttonText}>🚻{'\n'}Bathroom</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I am tired', 'Tired', 'tired')}>
+                <Text style={styles.buttonText}>😴{'\n'}Tired</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I need help', 'Help', 'help')}>
+                <Text style={styles.buttonText}>🆘{'\n'}Help</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I am in pain', 'Pain', 'pain')}>
+                <Text style={styles.buttonText}>🤕{'\n'}Pain</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          
+          {/* Greetings */}
+          <TouchableOpacity style={styles.categoryHeader} onPress={() => toggleCategory('Greetings')}>
+            <Text style={styles.category}>Greetings</Text>
+            <Text style={styles.categoryArrow}>{collapsedCategories.includes('Greetings') ? '▶' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {!collapsedCategories.includes('Greetings') && (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Hello', 'Hello', 'hello')}>
+                <Text style={styles.buttonText}>👋{'\n'}Hello</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Goodbye', 'Goodbye', 'goodbye')}>
+                <Text style={styles.buttonText}>👋{'\n'}Goodbye</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Thank you', 'Thank You', 'thank you')}>
+                <Text style={styles.buttonText}>🙏{'\n'}Thank You</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Please', 'Please', 'please')}>
+                <Text style={styles.buttonText}>🙏{'\n'}Please</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          
+          {/* Responses */}
+          <TouchableOpacity style={styles.categoryHeader} onPress={() => toggleCategory('Responses')}>
+            <Text style={styles.category}>Responses</Text>
+            <Text style={styles.categoryArrow}>{collapsedCategories.includes('Responses') ? '▶' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {!collapsedCategories.includes('Responses') && (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Yes', 'Yes', 'yes')}>
+                <Text style={styles.buttonText}>✅{'\n'}Yes</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('No', 'No', 'no')}>
+                <Text style={styles.buttonText}>❌{'\n'}No</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I do not know', "Don't Know", "don't know")}>
+                <Text style={styles.buttonText}>🤷{'\n'}Don't Know</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Maybe', 'Maybe', 'maybe')}>
+                <Text style={styles.buttonText}>🤔{'\n'}Maybe</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          
+          {/* Feelings */}
+          <TouchableOpacity style={styles.categoryHeader} onPress={() => toggleCategory('Feelings')}>
+            <Text style={styles.category}>Feelings</Text>
+            <Text style={styles.categoryArrow}>{collapsedCategories.includes('Feelings') ? '▶' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {!collapsedCategories.includes('Feelings') && (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I am happy', 'Happy', 'happy')}>
+                <Text style={styles.buttonText}>😊{'\n'}Happy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I am sad', 'Sad', 'sad')}>
+                <Text style={styles.buttonText}>😢{'\n'}Sad</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I am angry', 'Angry', 'angry')}>
+                <Text style={styles.buttonText}>😠{'\n'}Angry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I am scared', 'Scared', 'scared')}>
+                <Text style={styles.buttonText}>😰{'\n'}Scared</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I love you', 'Love You', 'love you')}>
+                <Text style={styles.buttonText}>❤️{'\n'}Love You</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Actions */}
+          <TouchableOpacity style={styles.categoryHeader} onPress={() => toggleCategory('Actions')}>
+            <Text style={styles.category}>Actions</Text>
+            <Text style={styles.categoryArrow}>{collapsedCategories.includes('Actions') ? '▶' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {!collapsedCategories.includes('Actions') && (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Stop', 'Stop', 'stop')}>
+                <Text style={styles.buttonText}>✋{'\n'}Stop</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I want more', 'More', 'more')}>
+                <Text style={styles.buttonText}>➕{'\n'}More</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I am all done', 'All Done', 'all done')}>
+                <Text style={styles.buttonText}>✔️{'\n'}All Done</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Let us go', 'Go', 'go')}>
+                <Text style={styles.buttonText}>🚶{'\n'}Go</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Please wait', 'Wait', 'wait')}>
+                <Text style={styles.buttonText}>⏸️{'\n'}Wait</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Places */}
+          <TouchableOpacity style={styles.categoryHeader} onPress={() => toggleCategory('Places')}>
+            <Text style={styles.category}>Places</Text>
+            <Text style={styles.categoryArrow}>{collapsedCategories.includes('Places') ? '▶' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {!collapsedCategories.includes('Places') && (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I want to go home', 'Home', 'home')}>
+                <Text style={styles.buttonText}>🏠{'\n'}Home</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('School', 'School', 'school')}>
+                <Text style={styles.buttonText}>🏫{'\n'}School</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Outside', 'Outside', 'outside')}>
+                <Text style={styles.buttonText}>🌳{'\n'}Outside</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* People */}
+          <TouchableOpacity style={styles.categoryHeader} onPress={() => toggleCategory('People')}>
+            <Text style={styles.category}>People</Text>
+            <Text style={styles.categoryArrow}>{collapsedCategories.includes('People') ? '▶' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {!collapsedCategories.includes('People') && (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Mom', 'Mom', 'mom')}>
+                <Text style={styles.buttonText}>👩{'\n'}Mom</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Dad', 'Dad', 'dad')}>
+                <Text style={styles.buttonText}>👨{'\n'}Dad</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Friend', 'Friend', 'friend')}>
+                <Text style={styles.buttonText}>👥{'\n'}Friend</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('Teacher', 'Teacher', 'teacher')}>
+                <Text style={styles.buttonText}>👨‍🏫{'\n'}Teacher</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Food & Drink */}
+          <TouchableOpacity style={styles.categoryHeader} onPress={() => toggleCategory('Food & Drink')}>
+            <Text style={styles.category}>Food & Drink</Text>
+            <Text style={styles.categoryArrow}>{collapsedCategories.includes('Food & Drink') ? '▶' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {!collapsedCategories.includes('Food & Drink') && (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I want pizza', 'Pizza', 'pizza')}>
+                <Text style={styles.buttonText}>🍕{'\n'}Pizza</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I want water', 'Water', 'water')}>
+                <Text style={styles.buttonText}>💧{'\n'}Water</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I want juice', 'Juice', 'juice')}>
+                <Text style={styles.buttonText}>🧃{'\n'}Juice</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I want a snack', 'Snack', 'snack')}>
+                <Text style={styles.buttonText}>🍪{'\n'}Snack</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Activities */}
+          <TouchableOpacity style={styles.categoryHeader} onPress={() => toggleCategory('Activities')}>
+            <Text style={styles.category}>Activities</Text>
+            <Text style={styles.categoryArrow}>{collapsedCategories.includes('Activities') ? '▶' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {!collapsedCategories.includes('Activities') && (
+            <>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I want to play', 'Play', 'play')}>
+                <Text style={styles.buttonText}>🎮{'\n'}Play</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I want to read', 'Read', 'read')}>
+                <Text style={styles.buttonText}>📚{'\n'}Read</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.button} onPress={() => speak('I want to watch TV', 'Watch TV', 'watch TV')}>
+                <Text style={styles.buttonText}>📺{'\n'}Watch TV</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Custom Words */}
+          {customButtons.length > 0 && (
+            <>
+              <TouchableOpacity style={styles.categoryHeader} onPress={() => toggleCategory('My Custom Words')}>
+                <Text style={styles.category}>My Custom Words</Text>
+                <Text style={styles.categoryArrow}>{collapsedCategories.includes('My Custom Words') ? '▶' : '▼'}</Text>
+              </TouchableOpacity>
+
+              {!collapsedCategories.includes('My Custom Words') && (
+                <>
+                  {customButtons.map((word, index) => (
+                    <TouchableOpacity 
+                      key={index}
+                      style={[styles.button, styles.customButton]}
+                      onPress={() => speak(word, word, word)}
+                      onLongPress={() => deleteCustomWord(index)}
+                    >
+                      <Text style={styles.buttonText}>⭐{'\n'}{word}</Text>
+                      <Text style={styles.deleteHint}>Hold to delete</Text>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#1a1a2e',
+    paddingTop: 60,
+  },
+  title: {
+  fontSize: 36,
+  fontWeight: 'bold',
+  color: '#fff',
+  textAlign: 'center',
+},
+  inputContainer: {
+  flexDirection: 'row',
+  paddingHorizontal: 20,
+  marginBottom: 20,
+  marginTop: 5,
+  gap: 10,
+  alignItems: 'center',
+},
+  input: {
+    flex: 1,
+    backgroundColor: '#16213e',
+    color: '#fff',
+    padding: 12,
+    borderRadius: 10,
+    fontSize: 16,
+    borderWidth: 2,
+    borderColor: '#0f3460',
+  },
+  scrollContainer: {
+    padding: 20,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 15,
+  },
+  category: {
+    fontSize: 24,
+    color: '#4ecca3',
+    marginTop: 20,
+    marginBottom: 10,
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  categoryHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
+  categoryArrow: {
+    color: '#4ecca3',
+    fontSize: 20,
+  },
+  button: {
+    width: 110,
+    height: 110,
+    backgroundColor: '#16213e',
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#0f3460',
+  },
+  customButton: {
+    borderColor: '#f39c12',
+    backgroundColor: '#2c3e50',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  quickAccessTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#4ecca3',
+    marginBottom: 12,
+    marginLeft: 20,
+    marginTop: 5,
+  },
+ quickAccessScroll: {
+  marginBottom: 15,
+  paddingVertical: 15,
+  paddingHorizontal: 5,
+},
+  quickAccessContainer: {
+  paddingHorizontal: 20,
+  paddingVertical: 10,
+  gap: 12,
+},
+  quickAccessButton: {
+    width: 100,
+    height: 100,
+    backgroundColor: '#16213e',
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#e74c3c',
+  },
+  quickAccessButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  quickAccessCount: {
+    color: '#e74c3c',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  emergencyButton: {
+    backgroundColor: '#e74c3c',
+    marginHorizontal: 20,
+    marginBottom: 15,
+    padding: 20,
+    borderRadius: 15,
+    alignItems: 'center',
+    borderWidth: 4,
+    borderColor: '#c0392b',
+  },
+  emergencyButtonPressed: {
+    backgroundColor: '#c0392b',
+  },
+  emergencyText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  emergencySubtext: {
+    color: '#fff',
+    fontSize: 14,
+    marginTop: 5,
+  },
+  sentenceBuilderContainer: {
+    backgroundColor: '#2c3e50',
+    marginHorizontal: 20,
+    marginBottom: 15,
+    padding: 15,
+    borderRadius: 15,
+    borderWidth: 3,
+    borderColor: '#3498db',
+  },
+  sentenceBuilderTitle: {
+    color: '#3498db',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  sentenceDisplay: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 15,
+  },
+  sentenceWord: {
+    backgroundColor: '#34495e',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#3498db',
+  },
+  sentenceWordText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sentenceControls: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  sentenceControlButton: {
+    flex: 1,
+    backgroundColor: '#3498db',
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  undoButton: {
+    backgroundColor: '#f39c12',
+  },
+  clearButton: {
+    backgroundColor: '#e74c3c',
+  },
+  sentenceControlText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  voiceControl: {
+    backgroundColor: '#34495e',
+    marginHorizontal: 20,
+    marginBottom: 15,
+    padding: 12,
+    borderRadius: 10,
+    gap: 10,
+  },
+  voiceControlRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  voiceControlLabel: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  voiceControlButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  voiceControlBtn: {
+    backgroundColor: '#2c3e50',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#3498db',
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  voiceControlBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  settingsTitle: {
+  color: '#4ecca3',
+  fontSize: 18,
+  fontWeight: 'bold',
+  marginBottom: 10,
+  textAlign: 'center',
+},
+
+header: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  position: 'relative',
+  marginBottom: 15,
+},
+settingsButton: {
+  position: 'absolute',
+  right: 20,
+  top: 0,
+  padding: 10,
+},
+settingsIcon: {
+  fontSize: 28,
+  color: '#4ecca3',
+},
+  phraseButton: {
+    borderColor: '#9b59b6',
+    width: 120,
+  },
+  deleteHint: {
+    fontSize: 8,
+    color: '#888',
+    marginTop: 4,
+  },
+});
